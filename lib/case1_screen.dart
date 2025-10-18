@@ -13,7 +13,7 @@ class Case1Screen extends StatefulWidget {
 class _Case1ScreenState extends State<Case1Screen> {
   double? fck;
   double? pWheel;
-  final List<double> thicknesses = [16, 20, 24, 28, 32];
+  final List<double> thicknesses = [15, 17, 19, 21, 23, 25, 27, 29, 31, 33];
   final List<double> ks = [6, 9, 12, 15];
   Map<String, List<double>> stressData = {};
   final double tyrePressureMpa = 0.8;
@@ -93,7 +93,7 @@ class _Case1ScreenState extends State<Case1Screen> {
                         ),
                       ),
                       value: pWheel,
-                      items: [5000.0, 7000.0, 11000.0, 13000.0]
+                      items: [5000.0, 7000.0, 9000.0, 11000.0, 13000.0]
                           .map((val) => DropdownMenuItem(value: val, child: Text(val.toString())))
                           .toList(),
                       onChanged: (val) => setState(() => pWheel = val),
@@ -118,13 +118,10 @@ class _Case1ScreenState extends State<Case1Screen> {
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
- 
-              // Legend for k values
-              
               const SizedBox(height: 16),
               Card(
                 elevation: 4,
-                color: Colors.black,
+                color: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -140,15 +137,15 @@ class _Case1ScreenState extends State<Case1Screen> {
                         height: 400,
                         child: LineChart(
                           LineChartData(
-                            backgroundColor: Colors.black,
+                            backgroundColor: Colors.white,
                             gridData: FlGridData(
                               show: true,
                               drawHorizontalLine: true,
                               drawVerticalLine: true,
                               horizontalInterval: 10,
-                              verticalInterval: 1,
-                              getDrawingHorizontalLine: (value) => const FlLine(color: Colors.white30, strokeWidth: 1),
-                              getDrawingVerticalLine: (value) => const FlLine(color: Colors.white30, strokeWidth: 1),
+                              verticalInterval: 2,
+                              getDrawingHorizontalLine: (value) => const FlLine(color: Colors.grey, strokeWidth: 1),
+                              getDrawingVerticalLine: (value) => const FlLine(color: Colors.grey, strokeWidth: 1),
                             ),
                             titlesData: FlTitlesData(
                               show: true,
@@ -156,11 +153,12 @@ class _Case1ScreenState extends State<Case1Screen> {
                                 sideTitles: SideTitles(
                                   showTitles: true,
                                   reservedSize: 32,
+                                  interval: 2,
                                   getTitlesWidget: (value, meta) {
-                                    if (value.toInt() >= 0 && value.toInt() < thicknesses.length) {
+                                    if (value >= 15 && value <= 33 && value == value.toInt()) {
                                       return Text(
-                                        thicknesses[value.toInt()].toString(),
-                                        style: const TextStyle(color: Colors.white, fontSize: 12),
+                                        value.toInt().toString(),
+                                        style: const TextStyle(color: Colors.black87, fontSize: 12),
                                       );
                                     }
                                     return const Text('');
@@ -174,7 +172,7 @@ class _Case1ScreenState extends State<Case1Screen> {
                                   reservedSize: 40,
                                   getTitlesWidget: (value, meta) => Text(
                                     value.toStringAsFixed(0),
-                                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                                    style: const TextStyle(color: Colors.black87, fontSize: 12),
                                   ),
                                 ),
                               ),
@@ -183,10 +181,10 @@ class _Case1ScreenState extends State<Case1Screen> {
                             ),
                             borderData: FlBorderData(
                               show: true,
-                              border: Border.all(color: Colors.white, width: 1),
+                              border: Border.all(color: Colors.grey, width: 1),
                             ),
-                            minX: 0,
-                            maxX: thicknesses.length - 1,
+                            minX: 15,
+                            maxX: 33,
                             minY: 0,
                             maxY: 80,
                             lineBarsData: ks.asMap().entries.map((entry) {
@@ -197,11 +195,11 @@ class _Case1ScreenState extends State<Case1Screen> {
                                 spots: stressData[k.toString()]!
                                     .asMap()
                                     .entries
-                                    .map((e) => FlSpot(e.key.toDouble(), e.value))
+                                    .map((e) => FlSpot(thicknesses[e.key], e.value))
                                     .toList(),
                                 isCurved: false,
                                 color: colors[index],
-                                dotData: const FlDotData(show: false),
+                                dotData: const FlDotData(show: true),
                                 belowBarData: BarAreaData(show: false),
                               );
                             }).toList(),
