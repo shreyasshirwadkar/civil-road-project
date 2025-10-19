@@ -186,7 +186,7 @@ class _Case1ScreenState extends State<Case1Screen> {
                             minX: 15,
                             maxX: 33,
                             minY: 0,
-                            maxY: 80,
+                            maxY: 100,
                             lineBarsData: ks.asMap().entries.map((entry) {
                               int index = entry.key;
                               double k = entry.value;
