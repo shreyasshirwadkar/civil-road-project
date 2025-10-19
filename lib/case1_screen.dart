@@ -13,8 +13,8 @@ class Case1Screen extends StatefulWidget {
 class _Case1ScreenState extends State<Case1Screen> {
   double? fck;
   double? pWheel;
-  final List<double> thicknesses = [15, 17, 19, 21, 23, 25, 27, 29, 31, 33];
-  final List<double> ks = [6, 9, 12, 15];
+  final List<double> thicknesses = [16,20,24,28,32];
+  final List<double> ks = [6, 9, 11, 13];
   Map<String, List<double>> stressData = {};
   final double tyrePressureMpa = 0.8;
   final double mu = 0.15;
