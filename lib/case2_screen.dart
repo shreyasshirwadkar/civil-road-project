@@ -13,18 +13,28 @@ class Case2Screen extends StatefulWidget {
 
 class _Case2ScreenState extends State<Case2Screen> {
   // ---------- USER INPUT ----------
-  double? fck;      // MPa
-  double? pWheel;   // kg
-  String? region;   // ΔT region
+  double? fck; // MPa
+  double? pWheel; // kg
+  String? region; // ΔT region
 
   // ---------- CONSTANTS ----------
   static const double tyrePressureMpa = 0.8;          // MPa
   static const double mu = 0.15;                     // Poisson's ratio
-  static const double conversionFactor = 10.1972;   // kg/cm² ↔ MPa
-  static const double alpha = 1.0e-5;                // 10⁻⁵ /°C
-  static const double sigmaTDesign = 1.7;            // Fixed design temperature stress
+  static const double conversionFactor = 10.1972;     // kg/cm² ↔ MPa
+  static const double alpha = 0.000012;              // Thermal expansion coefficient
+ //static const double t = 3.0; // Temperature factor
+ double get t {
+    if (region == null) return 3.0;               // default
+    switch (region!) {
+      case 'Maharashtra':                     return 3.0;
+      case 'Coastal area bounded by hills':   return 1.6;
+      case 'Coastal area unbounded by hills': return 3.5;
+      default:                                return 3.0;
+    }
+  }
 
-  // ΔT per region (only for display)
+
+ // ΔT per region
   static const Map<String, double> deltaT = {
     'Maharashtra': 17.3,
     'Coastal area bounded by hills': 14.6,
@@ -33,24 +43,21 @@ class _Case2ScreenState extends State<Case2Screen> {
 
   // ---------- FIXED DESIGN MATRIX ----------
   final List<double> thicknesses = [16, 20, 24, 28, 32]; // cm
-  final List<double> ks = [6, 9, 12, 15];               // kg/cm³
+  final List<double> ks = [6, 9, 12, 15]; // kg/cm³
 
-  // C-table (rows = k, columns = thickness) – from your sheet
+  // C-table (rows = k, columns = thickness)
   static const List<List<double>> cTable = [
-    // k=6
-    [0.92, 0.72, 0.552, 0.414, 0.308],
-    // k=9
-    [0.986, 0.8, 0.692, 0.552, 0.414],
-    // k=12
-    [1.035, 0.92, 0.8, 0.636, 0.496],
-    // k=15
-    [1.054, 0.986, 0.92, 0.82, 0.58],
+    [0.92, 0.72, 0.552, 0.414, 0.308],  // k=6
+    [0.986, 0.8, 0.692, 0.552, 0.414],  // k=9
+    [1.035, 0.92, 0.8, 0.636, 0.496],   // k=12
+    [1.054, 0.986, 0.92, 0.82, 0.58],   // k=15
   ];
 
   // ---------- CALCULATION RESULTS ----------
   double? eKgCm2;
   double? aCm;
-  Map<String, List<double>> loadStressMap = {}; // key = "k", value = list of σₑ for each h
+  Map<String, List<double>> loadStressMap = {}; // σₑ for each (h,k)
+  Map<String, List<double>> tempStressMap = {}; // σₜ for each (h,k)
 
   // ---------- INTERPOLATE C ----------
   double _interpolateC(double k, double h) {
@@ -70,7 +77,6 @@ class _Case2ScreenState extends State<Case2Screen> {
       return cLow + (cUp - cLow) * (k - ks[lower]) / (ks[upper] - ks[lower]);
     }
 
-    // interpolate between columns
     for (int i = 0; i < thicknesses.length - 1; i++) {
       if (h >= thicknesses[i] && h < thicknesses[i + 1]) {
         double t1 = thicknesses[i], t2 = thicknesses[i + 1];
@@ -101,23 +107,33 @@ class _Case2ScreenState extends State<Case2Screen> {
     double tyreP = tyrePressureMpa * conversionFactor;
     aCm = math.sqrt(pWheel! / (math.pi * tyreP));
 
-    // 3. Build full stress matrix
+    // 3. Build stress matrices
     loadStressMap.clear();
+    tempStressMap.clear();
+
     for (double k in ks) {
-      List<double> stresses = [];
+      List<double> loadStresses = [];
+      List<double> tempStresses = [];
+
       for (double h in thicknesses) {
-        // L = [E h³ / (12(1-μ²)k)]¼
+        // --- Load Stress σₑ ---
         double numerator = eKgCm2! * math.pow(h, 3);
         double denominator = 12 * (1 - math.pow(mu, 2)) * k;
         num l = math.pow(numerator / denominator, 0.25);
 
-        // σₑ = 0.803 P / h² * [4 log₁₀(L/a) + 0.666 (a/L) - 0.034]
         double logLa = math.log(l / aCm!) / math.log(10);
         double bracket = 4 * logLa + 0.666 * (aCm! / l) - 0.034;
         double sigmaE = 0.803 * pWheel! / math.pow(h, 2) * bracket;
-        stresses.add(sigmaE);
+        loadStresses.add(sigmaE);
+
+        // --- Temperature Stress σₜₑ = (E × α × t × C) / 2 ---
+        double C = _interpolateC(k, h);
+        double sigmaT = (eKgCm2! * alpha * this.t * C) / 2;
+        tempStresses.add(sigmaT);
       }
-      loadStressMap[k.toString()] = stresses;
+
+      loadStressMap[k.toString()] = loadStresses;
+      tempStressMap[k.toString()] = tempStresses;
     }
 
     setState(() {});
@@ -169,90 +185,122 @@ class _Case2ScreenState extends State<Case2Screen> {
 
             // ---------- RESULTS ----------
             if (loadStressMap.isNotEmpty) ...[
-              const SizedBox(height: 32),
-              _ResultCard(
-                title: 'Design Parameters',
-                children: [
-                  _ResultRow('E (kg/cm²)', eKgCm2!.toStringAsFixed(2)),
-                  _ResultRow('a (cm)', aCm!.toStringAsFixed(2)),
-                  _ResultRow('Temperature Stress σₜₑ (kg/cm²)', sigmaTDesign.toStringAsFixed(1)),
-                  const _ResultRow('Note', 'σₜₑ is fixed at 1.7 kg/cm² (design value)', bold: false),
-                ],
-              ),
+              // const SizedBox(height: 32),
+              // _ResultCard(
+              //   title: 'Design Parameters',
+              //   children: [
+              //     _ResultRow('E (kg/cm²)', eKgCm2!.toStringAsFixed(2)),
+              //     _ResultRow('a (cm)', aCm!.toStringAsFixed(2)),
+              //     _ResultRow('α (thermal coeff.)', alpha.toString()),
+              //     _ResultRow('t (factor)', t.toString()),
+              //   ],
+              // ),
 
+            
               const SizedBox(height: 32),
               const Text(
-                'Edge Load Stress vs Thickness (all k values)',
+                'Total Edge Stress = σₑ + σₜₑ  (all k values)',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
               Card(
                 elevation: 4,
+                color: Colors.white,
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                 child: Padding(
                   padding: const EdgeInsets.all(8),
                   child: SizedBox(
                     height: 380,
-                    child: LineChart(
-                      LineChartData(
-                        gridData: const FlGridData(show: true),
-                        titlesData: FlTitlesData(
-                          leftTitles: AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              interval: 10,
-                              reservedSize: 40,
-                              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                                  style: const TextStyle(fontSize: 12)),
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: 700,
+                        child: LineChart(
+                          LineChartData(
+                            gridData: FlGridData(
+                              show: true,
+                              drawHorizontalLine: true,
+                              drawVerticalLine: true,
+                              horizontalInterval: 10,
+                              verticalInterval: 5,
+                              getDrawingHorizontalLine: (value) => FlLine(strokeWidth: 1),
+                              getDrawingVerticalLine: (value) => FlLine( strokeWidth: 1),
                             ),
-                          ),
-                          bottomTitles: AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: true,
-                              interval: 4,
-                              reservedSize: 30,
-                              getTitlesWidget: (v, _) => Text(v.toInt().toString(),
-                                  style: const TextStyle(fontSize: 12)),
+                            titlesData: FlTitlesData(
+                              leftTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  interval: 10,
+                                  reservedSize: 40,
+                                  getTitlesWidget: (value, _) => Text(
+                                    value.toInt().toString(),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                              bottomTitles: AxisTitles(
+                                sideTitles: SideTitles(
+                                  showTitles: true,
+                                  interval: 5,
+                                  reservedSize: 30,
+                                  getTitlesWidget: (value, _) => Text(
+                                    value.toInt().toString(),
+                                    style: const TextStyle(fontSize: 12),
+                                  ),
+                                ),
+                              ),
+                              topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                              rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
                             ),
-                          ),
-                        ),
-                        borderData: FlBorderData(show: true),
-                        minX: 15,
-                        maxX: 33,
-                        minY: 0,
-                        maxY: 100,
-                        lineBarsData: ks.asMap().entries.map((e) {
-                          int idx = e.key;
-                          double k = e.value;
-                          List<Color> colors = [Colors.red, Colors.green, Colors.blue, Colors.orange];
-                          return LineChartBarData(
-                            spots: loadStressMap[k.toString()]!
-                                .asMap()
-                                .entries
-                                .map((p) => FlSpot(thicknesses[p.key], p.value))
-                                .toList(),
-                            isCurved: false,
-                            color: colors[idx],
-                            dotData: const FlDotData(show: true),
-                            barWidth: 2,
-                          );
-                        }).toList(),
-                        lineTouchData: LineTouchData(
-                          enabled: true,
-                          touchTooltipData: LineTouchTooltipData(
-                            getTooltipColor: (_) => Colors.blueGrey.withOpacity(0.9),
-                            getTooltipItems: (spots) {
-                              return spots.map((s) {
-                                final h = thicknesses[s.spotIndex];
-                                final k = ks[s.barIndex];
-                                final total = s.y + sigmaTDesign;
-                                return LineTooltipItem(
-                                  'h = ${h} cm\nk = ${k} kg/cm³\nσₑ = ${s.y.toStringAsFixed(2)}\nσₜₑ = $sigmaTDesign\nTOTAL = ${total.toStringAsFixed(2)} kg/cm²',
-                                  const TextStyle(color: Colors.white, fontSize: 12),
-                                );
-                              }).toList();
-                            },
+                            borderData: FlBorderData(
+                              show: true,
+                              border: Border.all( width: 1),
+                            ),
+                            backgroundColor: Colors.white,
+                            minX: 15,
+                            maxX: 40,
+                            minY: 0,
+                            maxY: 100,
+                            lineBarsData: ks.asMap().entries.map((e) {
+                              int idx = e.key;
+                              double k = e.value;
+                              List<Color> colors = [Colors.red, Colors.green, Colors.blue, Colors.orange];
+                              return LineChartBarData(
+                                spots: loadStressMap[k.toString()]!.asMap().entries.map((p) {
+                                  double sigmaE = p.value;
+                                  double sigmaT = tempStressMap[k.toString()]![p.key];
+                                  return FlSpot(thicknesses[p.key], sigmaE + sigmaT);
+                                }).toList(),
+                                isCurved: false,
+                                color: colors[idx],
+                                dotData: const FlDotData(show: true),
+                                barWidth: 3,
+                              );
+                            }).toList(),
+                            lineTouchData: LineTouchData(
+                              enabled: true,
+                              touchTooltipData: LineTouchTooltipData(
+                                //tooltipBgColor: Colors.blueGrey.withOpacity(0.95),
+                                tooltipRoundedRadius: 8,
+                                tooltipPadding: const EdgeInsets.all(8),
+                                getTooltipItems: (List<LineBarSpot> touchedSpots) {
+                                  return touchedSpots.map((spot) {
+                                    final h = thicknesses[spot.spotIndex]; // X value
+                                    final total = spot.y; // Y value
+                                    return LineTooltipItem(
+                                      'h = ${h}cm\n'
+                                      'TOTAL = ${total.toStringAsFixed(2)} kg/cm²',
+                                      const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    );
+                                  }).toList();
+                                },
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -260,7 +308,7 @@ class _Case2ScreenState extends State<Case2Screen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 8),
+const SizedBox(height: 8),
               Wrap(
                 alignment: WrapAlignment.center,
                 spacing: 16,
@@ -286,36 +334,42 @@ class _Case2ScreenState extends State<Case2Screen> {
 
               const SizedBox(height: 32),
               const Text(
-                'Load Stress Table (σₑ only, kg/cm²)',
+                'Total Edge Stress Table (σₑ + σₜₑ, kg/cm²)',
                 style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 8),
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: DataTable(
-                    columnSpacing: 24,
-                    headingRowColor: MaterialStateProperty.all(Colors.blueGrey),
-                    columns: [
-                      const DataColumn(label: Text('h (cm)', style: TextStyle(color: Colors.white))),
-                      ...ks.map((k) => DataColumn(
-                          label: Text('k=$k', style: const TextStyle(color: Colors.white)))),
-                    ],
-                    rows: thicknesses.asMap().entries.map((row) {
-                      int r = row.key;
-                      double h = row.value;
-                      return DataRow(
-                        color: MaterialStateProperty.all(r.isEven ? Colors.grey[100] : Colors.white),
-                        cells: [
-                          DataCell(Text(h.toStringAsFixed(0))),
-                          ...ks.map((k) => DataCell(Text(
-                              loadStressMap[k.toString()]![r].toStringAsFixed(2)))),
-                        ],
-                      );
-                    }).toList(),
+              Center(
+                child: Card(
+                  elevation: 4,
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: DataTable(
+                      columnSpacing: 24,
+                      headingRowColor: MaterialStateProperty.all(Colors.blueGrey),
+                      columns: [
+                        const DataColumn(label: Text('h (cm)', style: TextStyle(color: Colors.white))),
+                        ...ks.map((k) => DataColumn(label: Text('k=$k', style: const TextStyle(color: Colors.white)))),
+                      ],
+                      rows: thicknesses.asMap().entries.map((row) {
+                        int r = row.key;
+                        double h = row.value;
+                        return DataRow(
+                          color: MaterialStateProperty.all(r.isEven ? Colors.grey[100] : Colors.white),
+                          cells: [
+                            DataCell(Text(h.toStringAsFixed(0))),
+                            ...ks.map((k) {
+                              final String key = k.toString();
+                              final double sigmaE = loadStressMap[key]![r];
+                              final double sigmaT = tempStressMap[key]![r];
+                              final double total = sigmaE + sigmaT;
+                              return DataCell(Text(total.toStringAsFixed(2)));
+                            }),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
               ),
