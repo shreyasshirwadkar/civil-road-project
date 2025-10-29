@@ -1,3 +1,4 @@
+import 'package:civil_road_app/case2_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:civil_road_app/case1_screen.dart';
 
@@ -73,12 +74,10 @@ class HomeScreen extends StatelessWidget {
               ),
               const SizedBox(height: 16),
               AnimatedButton(
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Case 2 not implemented yet'),
-                      backgroundColor: Color(0xFF19183B),
-                    ),
+                  onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const Case2Screen()),
                   );
                 },
                 gradient: const LinearGradient(
